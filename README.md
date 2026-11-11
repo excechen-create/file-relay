@@ -1,6 +1,10 @@
-# Obsidian Remote NAS Resource Adapter
+# nas address translator — Windows preview
 
-Windows-first Obsidian plugin preview, version 0.4.1. Maps absolute Windows image references to read-only NAS WebDAV resources and supplies temporary Blob URLs to existing Obsidian and Adjustable Media image nodes.
+Bring remote images into your notes.
+
+Formerly Remote NAS Resource Adapter. Only the display name has changed; the plugin ID and installation directory remain remote-nas-resource-adapter so existing settings are retained. The repository URL is unchanged.
+
+Windows-first Obsidian plugin. Maps absolute Windows image references to read-only NAS WebDAV resources and supplies temporary Blob URLs to existing Obsidian and Adjustable Media image nodes.
 
 ## Resource fetching and rendering
 
@@ -20,14 +24,6 @@ will resolve to /Data/Researcher/example.jpg on the configured HTTPS origin. Mat
 
 Bare relative paths may be rendered as missing attachments by Obsidian and AM without image nodes. The supported fake absolute file URL lets the existing AM renderer and viewer operate normally. No placeholder images or original NAS files are copied into the Vault.
 
-## Install with BRAT
-
-The repository is public. In Obsidian, install and enable BRAT from Community plugins, then use Add beta plugin and enter `excechen-create/obsidian-remote-nas-resource-adapter`. Select `v0.4.1` if a version is requested and enable the installed adapter. The release supplies manifest.json, main.js and styles.css separately, as well as the ZIP.
-
-GitHub authentication is not required for public access, but anonymous API rate limits can affect BRAT, especially on shared VPN/proxy exits. Wait for the reset or download the release ZIP manually instead of granting broad token permissions. NAS credentials are unrelated to GitHub tokens.
-
-Install and enable Adjustable Media separately for AM layouts and its viewer. Keep session credentials as the default, verify HTTPS, then explicitly enable NAS images. Existing NAS-specific certificate profiles are not distributed in this repository. On a certificate failure, resolve the trust configuration; do not disable TLS validation.
-
 ## Build and install
 
 ~~~powershell
@@ -41,11 +37,15 @@ Builds produce dist/manifest.json, main.js and styles.css (plus a debug source m
 
 Defaults are non-working example settings. Fill the HTTPS origin, account and mappings. Verify HTTPS first, enter the password in the plugin's session dialog, then explicitly enable NAS images. Reloading the plugin never automatically enables NAS. Stop clears session credentials. The example config contains no password.
 
+The existing Windows preview release is v0.4.1. It can be installed through BRAT using the repository excechen-create/obsidian-remote-nas-resource-adapter. The development branch must be built from source to try changes made after that release.
+
 ## HTTPS and credentials
 
 The Windows transport fixes the origin, rejects all redirects, validates TLS, limits response bytes and actually closes owned sockets on timeout or unload. Only image GET and finite PROPFIND Depth 0/1 are implemented. There is no NAS write/delete/move operation.
 
 System/Node trust is the default. Advanced certificateTrust configuration may explicitly bind one public leaf certificate, SHA-256 fingerprint, TLS SAN identity, physical IPv4 address and port. Native certificate/name/expiry validation remains enabled. Changes revoke preflight and session credentials; certificate replacement or expiry is rejected. This does not install system roots. Initial certificate ownership must be explicitly established by the user; never automatically trust a captured certificate. See src/certificate-trust.ts for the schema. Do not include private keys.
+
+Use 获取并验证证书 in settings to retrieve the server's public certificate. A trusted endpoint continues through ordinary HTTPS verification. For manual trust of an IPv4 endpoint, enter the certificate's DNS SAN name and the SHA-256 fingerprint from a separately trusted source. The plugin repeats the TLS handshake with verification enabled before saving the binding. Certificate inspection uses only the TLS handshake and sends no HTTP request or credentials. All WebDAV traffic goes to the configured endpoint. The plugin sends no analytics or telemetry.
 
 Passwords are session-only by default. Official Obsidian SecretStorage/SecretComponent is optional and stores only a secret name in plugin settings. Its actual platform security and backup/sync boundary require device-specific checks; other same-user programs/plugins are not isolated. Never commit a real data.json or profile.
 

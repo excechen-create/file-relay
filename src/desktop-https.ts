@@ -1,5 +1,6 @@
 import {request as httpsRequest} from 'node:https';
-import {checkServerIdentity,getCACertificates} from 'node:tls';
+import {checkServerIdentity,connect,getCACertificates} from 'node:tls';
+import {isIP} from 'node:net';
 import {platform} from 'node:process';
 import {Buffer} from 'node:buffer';
 import type {ClientRequest,IncomingMessage} from 'node:http';
@@ -34,6 +35,58 @@ function classify(error:unknown):AdapterError {
   const code=(error as {code?:string})?.code ?? '';
   return new AdapterError(/CERT|TLS|SELF_SIGNED|ISSUER|VERIFY_LEAF/.test(code)?'TLS':'NETWORK');
 }
+function systemRoots():string[]|undefined {
+  if(platform!=='win32'||typeof getCACertificates!=='function')return undefined;
+  try{return [...new Set([...getCACertificates('default'),...getCACertificates('system')])];}
+  catch{throw new AdapterError('TLS','Windows certificate roots unavailable');}
+}
+
+/** TLS handshake only. This socket never carries application data or credentials. */
+function inspectPeer(endpoint:string,trust?:CertificateTrust):Promise<{authorized:boolean;certificate:X509Certificate}> {
+  const url=new URL(checkedOrigin(endpoint));
+  const host=url.hostname.replace(/^\[|\]$/g,'');
+  const servername=trust?.serverName ?? (isIP(host)?undefined:host);
+  return new Promise((resolve,reject)=>{
+    const socket=connect({
+      host,port:Number(url.port||443),servername,minVersion:'TLSv1.2',
+      ca:trust?.certificatePem ?? systemRoots(),
+      ...(trust?{allowPartialTrustChain:true,rejectUnauthorized:true}:{rejectUnauthorized:false}),
+    });
+    const timer=setTimeout(()=>{socket.destroy();reject(new AdapterError('NETWORK','TLS handshake timed out'));},5000);
+    socket.once('error',error=>{clearTimeout(timer);socket.destroy();reject(classify(error));});
+    socket.once('close',()=>{clearTimeout(timer);reject(new AdapterError('NETWORK','TLS connection closed'));});
+    socket.once('secureConnect',()=>{
+      clearTimeout(timer);
+      try{
+        const certificate=socket.getPeerX509Certificate();
+        if(!certificate||certificate.raw.length>48000)throw new AdapterError('TLS','Missing or oversized server certificate');
+        resolve({authorized:socket.authorized,certificate});
+      }catch(error){reject(error);}
+      finally{socket.destroy();}
+    });
+  });
+}
+
+export async function fetchNasCertificate(endpoint:string) {
+  const {authorized,certificate}=await inspectPeer(endpoint);
+  return {authorized,sha256:certificate.fingerprint256.replaceAll(':',''),
+    identities:certificate.subjectAltName ?? '',validFrom:certificate.validFrom,
+    validTo:certificate.validTo,certificatePem:certificate.toString()};
+}
+
+export async function confirmNasCertificate(endpoint:string,candidate:Awaited<ReturnType<typeof fetchNasCertificate>>,
+  serverName:string,expectedFingerprint:string):Promise<CertificateTrust> {
+  const url=new URL(checkedOrigin(endpoint));
+  const trust=validateCertificateTrust({
+    address:url.hostname,port:Number(url.port||443),serverName:serverName.trim(),
+    sha256:expectedFingerprint.trim().replaceAll(':',''),certificatePem:candidate.certificatePem,
+  },endpoint);
+  const peer=await inspectPeer(endpoint,trust);
+  if(!peer.authorized||peer.certificate.fingerprint256.replaceAll(':','')!==trust.sha256)
+    throw new AdapterError('TLS','Server certificate changed');
+  return trust;
+}
+
 function createTransport(options:DesktopHttpsOptions,testCa?:string,explicitTrust?:CertificateTrust):DesktopHttpsTransport {
   const origin=checkedOrigin(options.origin);
   const certificateTrust=explicitTrust?validateCertificateTrust(explicitTrust,origin):undefined;
@@ -42,9 +95,9 @@ function createTransport(options:DesktopHttpsOptions,testCa?:string,explicitTrus
   let trust={policy:testCa!==undefined?'test-loopback-ca':'node-default',certificates:testCa!==undefined?1:null as number|null};
   if(certificateTrust){ca=certificateTrust.certificatePem;trust={policy:'explicit-leaf-endpoint',certificates:1};}
   // Honor the existing Windows trust store per connection; never set global CA defaults or install roots.
-  if(!certificateTrust&&testCa===undefined&&platform==='win32'&&typeof getCACertificates==='function'){
-    try{ca=[...new Set([...getCACertificates('default'),...getCACertificates('system')])];trust={policy:'windows-and-node',certificates:ca.length};}
-    catch{throw new AdapterError('TLS','Windows certificate roots unavailable');}
+  if(!certificateTrust&&testCa===undefined){
+    ca=systemRoots();
+    if(ca)trust={policy:'windows-and-node',certificates:ca.length};
   }
   const maxBytes=options.maxBytes ?? 20*1024*1024,timeoutMs=options.timeoutMs ?? 20000;
   if(!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>20*1024*1024||!Number.isFinite(timeoutMs)||timeoutMs<1||timeoutMs>60000)
