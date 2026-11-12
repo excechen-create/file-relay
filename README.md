@@ -33,6 +33,12 @@ For manual installation, copy main.js, manifest.json and styles.css from the rel
 
 WebDAV uses read-only HTTPS with certificate validation and redirect rejection. For a private IPv4 endpoint, the desktop certificate settings can bind an explicitly verified public certificate fingerprint and DNS identity to that host and port. Enable the corresponding trust option in the resource group. Changing that certificate requires a new confirmation.
 
-Windows Obsidian has been exercised with local and loopback WebDAV files, native views, AM, and file paste and drop. The mobile path has mock coverage and needs real Android/iPad validation. It requires a device-trusted HTTPS certificate and CORS support for the Obsidian WebView.
+The plugin is desktop-only. Windows Obsidian has been exercised with local and loopback WebDAV files, native views, AM, and file paste and drop.
+
+## Permissions and data
+
+- **Files outside the Vault:** The plugin reads images from the external directories you configure, so the images can stay in their original location. The local backend checks that the resolved file is inside the configured directory.
+- **Network and accounts:** WebDAV is optional. The plugin connects to the HTTPS WebDAV service you configure to read images or verify legacy mappings. An account is required if that service requires authentication. A saved Obsidian Keychain entry or session password is used for that service. The plugin sends no telemetry.
+- **Notebook changes:** Bulk conversion and restoration require confirmation. Conversion edits image destinations and keeps the affected notes' original and converted text in device-local storage for the latest batch. Restore checks for later edits before writing and clears the recovery record after success.
 
 The source tree includes only synthetic fixtures. Tests that require a separately installed audited AM bundle skip when it is absent.

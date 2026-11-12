@@ -43,10 +43,9 @@ export class ResourceSettingsTab extends PluginSettingTab {
   private probe?: ImageLease;
   private sample = '';
 
-  constructor(plugin: Plugin, private api: SettingsApi, private legacy?: PluginSettingTab) { super(plugin.app, plugin); }
+  constructor(plugin: Plugin, private api: SettingsApi) { super(plugin.app, plugin); }
   display(): void { this.draft = this.api.groups(); this.render(); }
   hide(): void {
-    this.legacy?.hide();
     this.probe?.release(); this.probe = undefined; this.passwords.clear();
     for (const input of this.containerEl.querySelectorAll('input[type=password]')) (input as HTMLInputElement).value = '';
   }
@@ -127,13 +126,6 @@ export class ResourceSettingsTab extends PluginSettingTab {
       .addButton(button => button.setButtonText('测试当前策略').onClick(() => void this.test(false)))
       .addButton(button => button.setButtonText('测试 WebDAV').onClick(() => void this.test(true)));
     this.status = diagnostics.createEl('p', { attr: { role: 'status' } });
-    if (this.legacy) {
-      const legacy = this.legacy;
-      const details = el.createEl('details', { cls: 'nas-resource-settings-details' });
-      details.createEl('summary', { text: '旧 Windows 路径映射设置' });
-      legacy.containerEl = details.createDiv();
-      details.addEventListener('toggle', () => { if (details.open) legacy.display(); else legacy.hide(); });
-    }
   }
 
   private save(session?: { namespace: string; password: string }): void {

@@ -107,7 +107,7 @@ export class NasSettingsTab extends PluginSettingTab {
   display():void {
     this.containerEl.empty();
     this.containerEl.createEl('h2',{text:'nas address translator'});
-    this.containerEl.createEl('p',{text:'默认是人工样本模式。配置、验证 HTTPS 和核对映射后，才会启用 NAS 图片；只使用 GET 和有限 PROPFIND。'});
+    this.containerEl.createEl('p',{text:'在这里核对 HTTPS 证书，或为旧文件链接配置只读 WebDAV 映射。'});
     new Setting(this.containerEl).setName('WebDAV HTTPS 地址').setDesc('仅填写服务器及端口，目录在映射中单独填写。').addText(text=>text.setValue(this.draft.endpoint).setPlaceholder('https://服务器:5006').onChange(value=>{
       if(this.draft.endpoint===value.trim())return;
       this.draft.endpoint=value.trim();this.certificateCandidate=undefined;

@@ -30,7 +30,8 @@ export interface DesktopHttpsTransport {
 export interface ReadOnlyResponse {status:number;headers:Record<string,string>;bytes:ArrayBuffer}
 type RequestSpec={method:'GET'|'PROPFIND';depth?:0|1;headersOnly?:boolean};
 type Outcome={response:ReadOnlyResponse}|{error:AdapterError};
-const testOrigin='https://127.0.0.1:19225';
+declare const __NAS_LAB__: boolean;
+const testOrigin=typeof __NAS_LAB__ === 'undefined' || __NAS_LAB__ ? 'https://127.0.0.1:19225' : '';
 
 function classify(error:unknown):AdapterError {
   const code=(error as {code?:string})?.code ?? '';
@@ -220,6 +221,7 @@ export function createCertificateHttpsTransport(options:DesktopHttpsOptions,trus
 }
 /** Isolated test CA is accepted ONLY for the fixed loopback origin. Does not modify any global trust store. */
 export function createLoopbackHttpsTestTransport(ca:string,options:Omit<DesktopHttpsOptions,'origin'>):DesktopHttpsTransport {
+  if (typeof __NAS_LAB__ !== 'undefined' && !__NAS_LAB__) throw new AdapterError('NAS_DISABLED');
   if(typeof ca!=='string'||ca.length>65536||!ca.includes('-----BEGIN CERTIFICATE-----'))throw new AdapterError('TLS');
   return createTransport({...options,origin:testOrigin},ca);
 }

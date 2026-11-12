@@ -12,6 +12,7 @@ import type {NasSettings} from './nas-settings';
 import type {ConnectionInfo} from './nas-settings-tab';
 import {ReadOnlyWebDav,discoverMapping,type DavEntry,type DiscoveryResult} from './webdav';
 import {UnifiedResources} from './unified-resources';
+declare const __NAS_LAB__: boolean;
 const desktop = () => require('./desktop-https') as typeof import('./desktop-https');
 const legacySettings = () => require('./nas-settings') as typeof import('./nas-settings');
 export default class NasPocPlugin extends Plugin {
@@ -53,12 +54,11 @@ export default class NasPocPlugin extends Plugin {
     this.registerEvent(this.app.workspace.on('layout-change',()=>this.attachViews()));
     this.registerEvent(this.app.workspace.on('file-open',()=>this.attachViews()));
     this.app.workspace.onLayoutReady(()=>{if(this.enabled)this.attachViews();});
-    this.addCommand({id:'restart-synthetic-resources',name:'重新加载当前模式图片',callback:()=>this.restart()});
+    if (typeof __NAS_LAB__ !== 'undefined' && __NAS_LAB__) this.addCommand({id:'restart-synthetic-resources',name:'重新加载当前模式图片',callback:()=>this.restart()});
     this.addCommand({id:'show-local-diagnostics',name:'显示本地诊断',callback:()=>new Notice(JSON.stringify(this.diagnostics()))});
   }
   private start(): void {
     this.enabled=true;
-    this.sessionCredentials.set({username:'poc-user',password:'poc-password'});
     this.desktopTransport=undefined;
     if(this.nasMode){
       const settings=legacySettings().validateNasSettings(this.nasSettings,true);
@@ -67,6 +67,8 @@ export default class NasPocPlugin extends Plugin {
       this.adapter=new DomAdapter(document,this.pool,source=>resolveResource(source,settings.endpoint,settings.mappings,Platform.resourcePathPrefix));
       return;
     }
+    if (!(typeof __NAS_LAB__ !== 'undefined' && __NAS_LAB__)) { this.enabled=false; this.adapter=undefined; this.pool=undefined; return; }
+    this.sessionCredentials.set({username:'poc-user',password:'poc-password'});
     const localHttp=createTestHttpLoader(requestUrl,'http://127.0.0.1:19223',()=>`Basic ${btoa('poc-user:poc-password')}`,1024*1024);
     if(this.secureLoopbackCa)this.desktopTransport=desktop().createLoopbackHttpsTestTransport(this.secureLoopbackCa,{
       getCredentials:()=>this.sessionCredentials.get(),maxBytes:1024*1024,timeoutMs:2000
@@ -104,7 +106,8 @@ export default class NasPocPlugin extends Plugin {
     this.transition++;this.stop();this.delayMs=Math.max(0,Math.min(delayMs,10000));this.start();this.attachViews();
   }
   diagnostics(): object {
-    return {mode:this.nasMode?'nas-read-only':this.secureLoopbackCa?'https-loopback-test-only':this.loopbackTest?'loopback-test-only':'synthetic-only',nasEnabled:this.nasMode&&this.enabled,apiVersion,resourcePrefix:Platform.resourcePathPrefix,
+    return {mode:this.nasMode?'nas-read-only':typeof __NAS_LAB__ !== 'undefined' && __NAS_LAB__
+      ? this.secureLoopbackCa?'https-loopback-test-only':this.loopbackTest?'loopback-test-only':'synthetic-only' : 'resources',nasEnabled:this.nasMode&&this.enabled,apiVersion,resourcePrefix:Platform.resourcePathPrefix,
       nas:{endpoint:this.nasSettings.endpoint,tlsVerified:this.nasTlsVerified(),mappings:this.nasSettings.mappings.length,credentialSource:this.nasSettings.credentialSource,
         certificateTrust:this.nasSettings.certificateTrust?{serverName:this.nasSettings.certificateTrust.serverName,sha256:this.nasSettings.certificateTrust.sha256}:null},
       runtime:{node:typeof process==='undefined'?undefined:process.versions.node,electron:typeof process==='undefined'?undefined:process.versions.electron},desktopTransport:this.desktopTransport?.stats(),
@@ -142,7 +145,7 @@ export default class NasPocPlugin extends Plugin {
   }
   private createNasTransport(anonymous=false):DesktopHttpsTransport{
     const options={getCredentials:()=>anonymous?null:this.nasCredentials()};
-    return this.nasFixtureCa&&this.nasSettings.endpoint==='https://127.0.0.1:19225'
+    return (typeof __NAS_LAB__ !== 'undefined' && __NAS_LAB__)&&this.nasFixtureCa&&this.nasSettings.endpoint==='https://127.0.0.1:19225'
       ?desktop().createLoopbackHttpsTestTransport(this.nasFixtureCa,options)
       :this.nasSettings.certificateTrust
         ?desktop().createCertificateHttpsTransport({...options,origin:this.nasSettings.endpoint},this.nasSettings.certificateTrust)
@@ -191,22 +194,22 @@ export default class NasPocPlugin extends Plugin {
     this.nasMode=nas;this.start();this.attachViews();
   }
   /** Lab only: the transport itself refuses a test CA outside the fixed loopback origin. */
-  setNasFixtureCa(ca:string|null):void{
+  setNasFixtureCa = (typeof __NAS_LAB__ !== 'undefined' && __NAS_LAB__) ? (ca:string|null):void => {
     if(this.nasSettings.endpoint!=='https://127.0.0.1:19225')throw new AdapterError('HOST');
     if(ca!==null){const test=desktop().createLoopbackHttpsTestTransport(ca,{getCredentials:()=>null});test.dispose();}
     this.nasFixtureCa=ca ?? undefined;this.verifiedNasEndpoint=undefined;
-  }
+  } : undefined;
   /** Test-runner only: fixed loopback fixture service, never a configurable NAS endpoint. */
-  setLoopbackTestTransport(enabled: boolean): void {
+  setLoopbackTestTransport = (typeof __NAS_LAB__ !== 'undefined' && __NAS_LAB__) ? (enabled: boolean): void => {
     if(this.pool && (this.pool.stats().inFlight || this.pool.stats().queued))throw new Error('LOCAL_TEST_BUSY');
     this.secureLoopbackCa=undefined;this.loopbackTest=enabled;this.restart();
-  }
-  setSecureLoopbackTestTransport(ca:string|null):void {
+  } : undefined;
+  setSecureLoopbackTestTransport = (typeof __NAS_LAB__ !== 'undefined' && __NAS_LAB__) ? (ca:string|null):void => {
     if(this.pool && (this.pool.stats().inFlight || this.pool.stats().queued))throw new Error('LOCAL_TEST_BUSY');
     if(ca!==null&&(!ca.includes('-----BEGIN CERTIFICATE-----')||ca.length>65536))throw new Error('TLS');
     this.secureLoopbackCa=ca ?? undefined;this.loopbackTest=false;this.restart();
-  }
-  async probeSecureLoopback(ca:string|null,routes:string[],options:{timeoutMs?:number;maxBytes?:number;cancelAfterMs?:number}={}):Promise<object> {
+  } : undefined;
+  probeSecureLoopback = (typeof __NAS_LAB__ !== 'undefined' && __NAS_LAB__) ? async (ca:string|null,routes:string[],options:{timeoutMs?:number;maxBytes?:number;cancelAfterMs?:number}={}):Promise<object> => {
     const allowed=new Set(['image','auth-fail','forbidden','missing','redirect-same','redirect-cross','redirect-host','redirect-http',
       'declared-large','stream-large','slow','truncated','html','encoded','disconnect']);
     if(routes.length>20||routes.some(route=>!allowed.has(route)))throw new Error('Invalid local test route');
@@ -225,9 +228,9 @@ export default class NasPocPlugin extends Plugin {
       }
       return result;
     }finally{transport.dispose();this.probes.delete(transport);}
-  }
+  } : undefined;
   /** Local self-test entry: fixed loopback endpoints, synthetic authorization only, no stored secret access. */
-  async probeLoopback(port: number): Promise<object> {
+  probeLoopback = (typeof __NAS_LAB__ !== 'undefined' && __NAS_LAB__) ? async (port: number): Promise<object> => {
     if(port!==19223)throw new Error('Unsupported local test port');
     const loader=createTestHttpLoader(requestUrl,`http://127.0.0.1:${port}`,()=>`Basic ${btoa('poc-user:poc-password')}`,1024*1024);
     const result: Record<string,string>={};
@@ -236,7 +239,7 @@ export default class NasPocPlugin extends Plugin {
       catch(error){result[name]=error instanceof Error?error.message:'ERROR';}
     }
     return result;
-  }
+  } : undefined;
 }
 function fixtureName(url:string):string {
   const resource=new URL(url);const name=decodeURIComponent(resource.pathname.slice('/fixtures/'.length));

@@ -1,10 +1,10 @@
 {
   "id": "remote-nas-resource-adapter",
   "name": "nas address translator",
-  "version": "0.4.4",
-  "minAppVersion": "1.11.4",
+  "version": "0.4.5",
+  "minAppVersion": "1.14.5",
   "description": "Resolve logical image links through device-local folders and read-only HTTPS WebDAV.",
   "author": "excechen-create",
   "authorUrl": "https://github.com/excechen-create",
-  "isDesktopOnly": false
+  "isDesktopOnly": true
 }

@@ -1,4 +1,4 @@
-import { FileSystemAdapter, MarkdownView, Notice, Platform, type Editor, type EditorPosition, type Plugin, type PluginSettingTab } from 'obsidian';
+import { FileSystemAdapter, MarkdownView, Modal, Notice, Platform, type Editor, type EditorPosition, type Plugin, type PluginSettingTab } from 'obsidian';
 import { EditorView } from '@codemirror/view';
 import { DomAdapter } from './dom-adapter';
 import { AdapterError } from './errors';
@@ -47,7 +47,15 @@ export class UnifiedResources {
       save: (groups, session) => this.save(groups, session),
       test: (uri, webdav) => webdav ? this.resolver.probeWebdav(uri) : this.acquire(uri),
       migrate: restore => void migration.start(restore),
-    }, legacy));
+    }));
+    if (legacy) {
+      const modal = new Modal(plugin.app);
+      modal.setTitle('Windows 证书和旧路径映射');
+      modal.onOpen = () => { legacy.containerEl = modal.contentEl; legacy.display(); };
+      modal.onClose = () => { legacy.hide(); modal.contentEl.empty(); };
+      plugin.register(() => modal.close());
+      plugin.addCommand({ id: 'open-windows-certificate-settings', name: '管理 Windows 证书和旧路径映射', callback: () => modal.open() });
+    }
     plugin.registerMarkdownPostProcessor((root, context) => this.rendering.reading(root, context), 100);
     plugin.registerEditorExtension(this.rendering.editorExtension());
     const workspace = plugin.app.workspace;
