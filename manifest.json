@@ -1,7 +1,7 @@
 {
   "id": "remote-nas-resource-adapter",
-  "name": "nas address translator",
-  "version": "0.4.5",
+  "name": "File Relay",
+  "version": "0.4.6",
   "minAppVersion": "1.14.5",
   "description": "Resolve logical image links through device-local folders and read-only HTTPS WebDAV.",
   "author": "excechen-create",

@@ -1,4 +1,4 @@
-# nas address translator
+# File Relay
 
 An Obsidian plugin for stable external image links, distributed under the [MIT License](LICENSE).
 
@@ -8,7 +8,7 @@ An Obsidian plugin for stable external image links, distributed under the [MIT L
 
 ## Resource groups
 
-Open **Settings → nas address translator**. Add a group with a short name and its local image directory. Use the same name on every device where you open the note. Expand **WebDAV** to configure the equivalent HTTPS directory and choose an Obsidian Keychain entry. The local configuration stores only the name of the secret entry.
+Open **Settings → File Relay**. Add a group with a short name and its local image directory. Use the same name on every device where you open the note. Expand **WebDAV** to configure the equivalent HTTPS directory and choose an Obsidian Keychain entry. The local configuration stores only the name of the secret entry.
 
 On desktop, paste a mapped path or paste or drop an image file to insert a logical link. For an unmapped external image, confirm the folder and name in the resource group dialog to save the mapping and insert the link. Canceling leaves the note unchanged. Vault attachments and non-image inputs follow Obsidian's normal workflow.
 
