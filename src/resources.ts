@@ -20,7 +20,7 @@ export class ResourcePool {
   constructor(private loader: Loader, options: Partial<PoolOptions> = {}, private urls: ObjectUrls = {
     create: data => URL.createObjectURL(data), revoke: url => URL.revokeObjectURL(url)
   }) { this.options = { ...defaults, ...options }; this.queue = new RequestQueue(this.options.concurrency); }
-  acquire(key: string, url: string): ResourceLease {
+  acquire(key: string, url: string, cache = true): ResourceLease {
     if (this.stopped) throw new AdapterError('UNLOADED');
     let entry = this.entries.get(key);
     if (entry?.failed && !entry.pending && !entry.refs && Date.now()-entry.failedAt >= this.options.cooldownMs) {
@@ -29,17 +29,19 @@ export class ResourcePool {
     if (!entry) {
       this.trim(true);
       if (this.entries.size >= this.options.maxEntries) throw new AdapterError('BUSY');
-      entry = this.start(key,url); this.entries.set(key,entry);
+      entry = this.start(key,url,cache); this.entries.set(key,entry);
     }
     entry.refs++; entry.lastUsed = Date.now();
     const owned = entry;
     let released = false;
     return { result: owned.result, release: () => {
       if (released) return; released = true;
-      owned.refs--; owned.lastUsed = Date.now(); this.trim();
+      owned.refs--; owned.lastUsed = Date.now();
+      if (!cache && !owned.refs && (!owned.pending || owned.url)) this.evict(key,owned);
+      this.trim();
     } };
   }
-  private start(key: string, url: string): Entry {
+  private start(key: string, url: string, cache: boolean): Entry {
     let resolve!: (value: string) => void;
     let reject!: (reason: Error) => void;
     const result = new Promise<string>((yes,no) => { resolve = yes; reject = no; });
@@ -61,7 +63,7 @@ export class ResourcePool {
     }).catch(error => entry.reject(error instanceof AdapterError ? error : new AdapterError('NETWORK')))
       .finally(() => {
         clearTimeout(entry.timer); entry.pending = false; this.trim();
-        if (this.stopped) this.evict(key,entry);
+        if (this.stopped || (!cache && !entry.refs)) this.evict(key,entry);
       });
     return entry;
   }

@@ -3,7 +3,7 @@ import {beforeAll,afterAll,beforeEach,describe,it,expect,vi} from 'vitest';
 import {access,readFile} from 'node:fs/promises';
 import {X509Certificate} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
-import {createDesktopHttpsTransport,createCertificateHttpsTransport,createLoopbackHttpsTestTransport,type DesktopHttpsTransport} from '../src/desktop-https';
+import {confirmNasCertificate,fetchNasCertificate,createDesktopHttpsTransport,createCertificateHttpsTransport,createLoopbackHttpsTestTransport,type DesktopHttpsTransport} from '../src/desktop-https';
 import {validateCertificateTrust} from '../src/certificate-trust';
 import {nasDefaults,validateNasSettings} from '../src/nas-settings';
 import {ResourcePool} from '../src/resources';
@@ -25,6 +25,23 @@ beforeAll(async()=>{
 beforeEach(async()=>{await lab.certificate('valid-localhost');lab.reset();});
 afterAll(async()=>{for(const t of transports)t.dispose();await lab?.close();});
 describe('real loopback HTTPS sockets, certificate verification and bounded reads',()=>{
+  it('discovers and confirms a leaf using TLS handshakes without sending any HTTP request',async()=>{
+    const approved=await leafTrust();
+    const peer=await fetchNasCertificate(origin);
+    expect(peer).toMatchObject({authorized:false,sha256:approved.sha256});
+    await expect(confirmNasCertificate(origin,peer,'localhost','0'.repeat(64))).rejects.toMatchObject({code:'TLS'});
+    await expect(confirmNasCertificate(origin,peer,'localhost',approved.sha256)).resolves.toMatchObject(approved);
+    await lab.certificate('wrong-host');
+    await expect(confirmNasCertificate(origin,peer,'localhost',approved.sha256)).rejects.toMatchObject({code:'TLS'});
+    expect(lab.state.events).toHaveLength(0);
+  });
+  it('can show an expired certificate but cannot approve it for use',async()=>{
+    await lab.certificate('expired');
+    const peer=await fetchNasCertificate(origin);
+    expect(peer.authorized).toBe(false);
+    await expect(confirmNasCertificate(origin,peer,'localhost',peer.sha256)).rejects.toMatchObject({code:'TLS'});
+    expect(lab.state.events).toHaveLength(0);
+  });
   it('scoped public leaf trust maps only its TLS identity to its fixed address and loads binary',async()=>{
     const trust=await leafTrust(),t=createCertificateHttpsTransport({origin,getCredentials:credentials},trust);transports.push(t);
     const result=await t.load(origin+'/image');expect(result.bytes.byteLength).toBe(lab.pngBytes);

@@ -20,21 +20,24 @@ export function parseMultistatus(xml:string,requestUrl:string,depth:0|1):DavEntr
   const doc=new DOMParser().parseFromString(xml,'application/xml');
   if(doc.querySelector('parsererror')||doc.documentElement.namespaceURI!==dav||doc.documentElement.localName!=='multistatus')throw new AdapterError('HTTP','Invalid WebDAV response');
   const rows=elements(doc,'response');if(rows.length>2000)throw new AdapterError('TOO_LARGE');
+  if(!rows.length)throw new AdapterError('HTTP','Empty WebDAV response');
   const parent=decodeURIComponent(new URL(requestUrl).pathname).split('/').filter(Boolean);
   const found=new Map<string,DavEntry>();
   for(const row of rows){
     const href=elements(row,'href')[0]?.textContent;if(!href)throw new AdapterError('PATH');
     const parsed=hrefPath(href,origin,requestUrl);
     if(parsed.parts.length<parent.length||parsed.parts.length>parent.length+depth||!parent.every((part,i)=>part===parsed.parts[i]))throw new AdapterError('PATH','Response escapes requested directory/depth');
+    const statuses=elements(row,'status').map(status=>/^\s*HTTP\/\d+(?:\.\d+)?\s+(\d{3})(?:\s|$)/.exec(status.textContent ?? '')?.[1]);
+    if(statuses.some(status=>status==='401'||status==='403'))throw new AdapterError('AUTH');
+    if(!statuses.length||statuses.some(status=>status!=='200'&&status!=='404'))throw new AdapterError('HTTP','Incomplete WebDAV response');
     const success=elements(row,'propstat').filter(stat=>/\s200(?:\s|$)/.test(elements(stat,'status')[0]?.textContent ?? ''));
     if(!success.length){
-      // A 207 can contain a denied resource/property status. Treat that as
-      // incomplete access, never as evidence that a competing root is absent.
-      const statuses=elements(row,'status').map(status=>status.textContent ?? '');
-      if(statuses.some(status=>/\s(?:401|403)(?:\s|$)/.test(status)))throw new AdapterError('AUTH');
-      continue;
+      // Only a resource-level 404 proves absence; missing properties do not.
+      if(Array.from(row.children).some(child=>child.namespaceURI===dav&&child.localName==='status'&&/\s404(?:\s|$)/.test(child.textContent ?? '')))continue;
+      throw new AdapterError('HTTP','WebDAV resource type was not verified');
     }
     const props=success.flatMap(stat=>elements(stat,'prop'));
+    if(!props.some(prop=>elements(prop,'resourcetype').length))throw new AdapterError('HTTP','WebDAV resource type was not verified');
     const collection=props.some(prop=>elements(prop,'collection').length>0);
     const path=`/${parsed.parts.map(encodeURIComponent).join('/')}${collection&&parsed.parts.length?'/':''}`;
     const url=origin+path;

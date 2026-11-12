@@ -1,6 +1,8 @@
 import { errorCode } from './errors';
 import type { ResolvedResource } from './paths';
 import type { ResourceLease, ResourcePool } from './resources';
+import { isResourceUri } from './resource-uri';
+import type { ImageLease } from './resource-resolver';
 type Resolver = (source: string) => ResolvedResource;
 interface Binding {
   source: string; lease: ResourceLease; objectUrl?: string; priorTitle: string | null;
@@ -13,7 +15,8 @@ export class DomAdapter {
   private bindings = new Map<HTMLImageElement,Binding>();
   private bodyObserver: MutationObserver;
   private stopped = false;
-  constructor(private document: Document, private pool: ResourcePool, private resolve: Resolver) {
+  constructor(private document: Document, private pool?: ResourcePool, private resolve?: Resolver,
+    private acquireLogical?: (source: string, remoteOnly?: boolean) => ImageLease) {
     const Observer = document.defaultView!.MutationObserver;
     // Discovery is limited to direct body children (Modal containers), not a global subtree observer.
     this.bodyObserver = new Observer(records => {
@@ -69,9 +72,11 @@ export class DomAdapter {
     return false;
   }
   private bind(image: HTMLImageElement): void {
-    if (!this.eligible(image)) { this.release(image); return; }
     const source = image.getAttribute('src') ?? '';
+    const logical = isResourceUri(source);
     const previous = this.bindings.get(image);
+    if (!previous && (logical ? !this.acquireLogical : !this.resolve)) return;
+    if (!this.eligible(image)) { this.release(image); return; }
     if (previous && source === previous.objectUrl) return;
     if (previous && source === previous.source) {
       // AM may reset the original source on an existing image during rerender/switch.
@@ -80,16 +85,39 @@ export class DomAdapter {
     }
     this.release(image);
     if (!source) return;
-    let resource: ResolvedResource;
-    try { resource = this.resolve(source); } catch { return; }
+    if (logical && (!this.acquireLogical || !image.closest('.vml-layout,.vml-viewer'))) return;
+    if (!logical && (!this.resolve || !this.pool)) return;
+    let resource: ResolvedResource | undefined;
+    try { if (!logical) resource = this.resolve!(source); } catch { return; }
+    let local = false;
     let lease: ResourceLease;
-    try { lease = this.pool.acquire(resource.key,resource.url); } catch (error) {
+    try {
+      if (logical) {
+        const imageLease = this.acquireLogical!(source);
+        lease = { result: imageLease.result.then(resolved => {
+          local = resolved.backend === 'local';
+          return resolved.url;
+        }), release: imageLease.release };
+      } else lease = this.pool!.acquire(resource!.key,resource!.url);
+    } catch (error) {
       // Track failed bindings too, so markers are restored on node reuse/unload.
       lease={result:Promise.reject(error),release:()=>{}};
     }
     const binding: Binding = {source,lease,priorTitle:image.getAttribute('title'),priorState:image.getAttribute('data-nas-state'),
       priorError:image.getAttribute('data-nas-error'),errorListener:()=>{
         if(this.bindings.get(image)===binding && image.getAttribute('src')===binding.objectUrl) {
+          if (local && this.acquireLogical) {
+            local = false;
+            binding.lease.release();
+            const fallback = this.acquireLogical(source, true);
+            binding.lease = { result: fallback.result.then(resolved => resolved.url), release: fallback.release };
+            image.dataset.nasState = 'loading';
+            void binding.lease.result.then(url => {
+              if (this.bindings.get(image) !== binding || image.getAttribute('src') !== binding.objectUrl) return;
+              binding.objectUrl = url; image.setAttribute('src', url); image.dataset.nasState = 'ready';
+            }, error => this.showFailure(image, binding, error));
+            return;
+          }
           image.dataset.nasState='error';image.dataset.nasError='IMAGE';
         }
       }};
@@ -100,9 +128,18 @@ export class DomAdapter {
       binding.objectUrl=url;image.setAttribute('src',url);image.dataset.nasState='ready';
     }).catch(error=>{
       if(this.bindings.get(image)!==binding || !this.eligible(image) || image.getAttribute('src')!==source) return;
-      image.dataset.nasState='error';image.dataset.nasError=errorCode(error);
-      image.setAttribute('title',`远程图片加载失败：${errorCode(error)}`);
+      this.showFailure(image, binding, error);
     });
+  }
+  private showFailure(image: HTMLImageElement, binding: Binding, error: unknown): void {
+    if (this.bindings.get(image) !== binding) return;
+    binding.lease.release();
+    image.dataset.nasState='error';image.dataset.nasError=errorCode(error);
+    image.title = '远程图片加载失败：' + (error instanceof Error ? error.message : errorCode(error));
+  }
+  rebind(): void {
+    for (const image of this.bindings.keys()) this.release(image);
+    this.refresh();
   }
   private release(image: HTMLImageElement): void {
     const binding=this.bindings.get(image);if(!binding)return;

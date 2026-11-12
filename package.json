@@ -8,6 +8,7 @@
     "check": "tsc --noEmit",
     "test": "vitest run",
     "build": "node scripts/build.mjs",
+    "build:am-compat": "node scripts/build-am-compat.mjs",
     "fixtures:tls": "node scripts/generate-tls-fixtures.mjs",
     "verify": "npm run check && npm test && npm run build"
   },

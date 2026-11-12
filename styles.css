@@ -1,3 +1,6 @@
-img[data-nas-state="loading"] { opacity: .65; }
-img[data-nas-state="error"] { outline: 1px dashed var(--text-error, #c44); }
+img[data-nas-state="loading"], img[data-resource-state="loading"] { opacity: .65; }
+img[data-nas-state="error"], img[data-resource-state="error"] { outline: 1px dashed var(--text-error, #c44); }
 .nas-poc-warning { color: var(--text-warning); }
+.nas-resource-group { padding-block: 0.5em; border-bottom: 1px solid var(--background-modifier-border); }
+.nas-resource-group details, .nas-resource-settings-details { margin-block: 0.5em; }
+.nas-resource-group summary, .nas-resource-settings-details summary { cursor: pointer; }

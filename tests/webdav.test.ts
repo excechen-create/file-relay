@@ -10,6 +10,27 @@ describe('WebDAV XML and resource boundaries',()=>{
     const denied=row('/Data/',true).replace('200 OK','403 Forbidden');
     expect(()=>parseMultistatus(xml(denied),origin+'/Data/',depth)).toThrow('AUTH');
   });
+  it.each(['500 Internal Server Error','503 Service Unavailable','423 Locked','invalid status'])('does not interpret %s inside 207 as absence',status=>{
+    expect(()=>parseMultistatus(xml(row('/Data/sample.png').replace('200 OK',status)),origin+'/Data/sample.png',0)).toThrow(expect.objectContaining({code:'HTTP'}));
+  });
+  it('accepts a resource-level 404 as absence but not missing required properties',()=>{
+    const missing='<d:response><d:href>/Data/sample.png</d:href><d:status>HTTP/1.1 404 Not Found</d:status></d:response>';
+    expect(parseMultistatus(xml(missing),origin+'/Data/sample.png',0)).toEqual([]);
+    expect(()=>parseMultistatus(xml(row('/Data/sample.png').replace('200 OK','404 Not Found')),origin+'/Data/sample.png',0)).toThrow(expect.objectContaining({code:'HTTP'}));
+    expect(()=>parseMultistatus(xml(row('/Data/sample.png').replace('<d:resourcetype></d:resourcetype>','')),origin+'/Data/sample.png',0)).toThrow(expect.objectContaining({code:'HTTP'}));
+    expect(()=>parseMultistatus(xml('<d:response><d:href>/Data/sample.png</d:href></d:response>'),origin+'/Data/sample.png',0)).toThrow(expect.objectContaining({code:'HTTP'}));
+    expect(()=>parseMultistatus(xml(''),origin+'/Data/sample.png',0)).toThrow(expect.objectContaining({code:'HTTP'}));
+  });
+  it('allows missing optional properties when resource type was successfully verified',()=>{
+    const optional='<d:propstat><d:prop><d:getetag/></d:prop><d:status>HTTP/1.1 404 Not Found</d:status></d:propstat>';
+    expect(parseMultistatus(xml(row('/Data/sample.png').replace('</d:response>',optional+'</d:response>')),origin+'/Data/sample.png',0)).toMatchObject([{isCollection:false}]);
+  });
+  it('rejects denied or failed properties even if another propstat succeeded',()=>{
+    for(const [status,code] of [['403 Forbidden','AUTH'],['500 Internal Server Error','HTTP']]){
+      const failed=`<d:propstat><d:prop><d:getetag/></d:prop><d:status>HTTP/1.1 ${status}</d:status></d:propstat>`;
+      expect(()=>parseMultistatus(xml(row('/Data/sample.png').replace('</d:response>',failed+'</d:response>')),origin+'/Data/sample.png',0)).toThrow(expect.objectContaining({code}));
+    }
+  });
   it('parses actual DAV namespaced collections and Chinese encoded file names',()=>{
     const entries=parseMultistatus(xml(row('/Data/',true)+row('/Data/%E4%B8%AD%E6%96%87%20%E5%9B%BE%E7%89%87.png')),origin+'/Data/',1);
     expect(entries).toHaveLength(2);expect(entries[0]!.isCollection).toBe(true);
@@ -35,6 +56,23 @@ describe('WebDAV XML and resource boundaries',()=>{
 });
 const directory=(path:string):DavEntry=>({url:origin+path,path,displayName:path.split('/').filter(Boolean).at(-1) ?? '/',isCollection:true});
 describe('bounded mapping discovery from listed roots, not guessed example paths',()=>{
+  it.each(['server-error','not-found'] as const)('distinguishes a competing root %s from verified absence through the real parser',async outcome=>{
+    const propfind=vi.fn(async(url:string,depth:number)=>{
+      let rows:string;
+      if(url===origin+'/')rows=row('/A/',true)+row('/B/',true);
+      else if(depth===1)rows=row(new URL(url).pathname,true);
+      else if(url===origin+'/B/sample.png')rows=outcome==='server-error'
+        ?row('/B/sample.png').replace('200 OK','500 Internal Server Error')
+        :'<d:response><d:href>/B/sample.png</d:href><d:status>HTTP/1.1 404 Not Found</d:status></d:response>';
+      else rows=row(new URL(url).pathname);
+      return {status:207,headers:{},bytes:new TextEncoder().encode(xml(rows)).buffer};
+    });
+    const load=vi.fn(),client=new ReadOnlyWebDav({propfind,load} as unknown as DesktopHttpsTransport,origin);
+    const result=discoverMapping(client,'C:/Sync',['sample.png']);
+    if(outcome==='server-error')await expect(result).rejects.toMatchObject({code:'HTTP'});
+    else await expect(result).resolves.toMatchObject({complete:true,candidates:[{webdavRoot:'/A'}]});
+    expect(load).not.toHaveBeenCalled();
+  });
   it('requires all representative files to exist before returning a candidate',async()=>{
     const client={origin,list:vi.fn(async(url?:string)=>url===origin+'/Data/'?[directory('/Data/')]:[directory('/Data/')]),
       stat:vi.fn(async(url:string)=>url.startsWith(origin+'/Data/Researcher/')?{url,path:new URL(url).pathname,isCollection:false}:null)};

@@ -5,14 +5,17 @@ import { resolveResource,parseWindowsPath } from './paths';
 import { fixtureMappings, fixtureOrigin, syntheticLoader } from './fixtures';
 import { createTestHttpLoader } from './transport';
 import type { Loader } from './transport';
-import {createDesktopHttpsTransport,createCertificateHttpsTransport,createLoopbackHttpsTestTransport,type DesktopHttpsTransport} from './desktop-https';
+import type {DesktopHttpsTransport} from './desktop-https';
 import {AdapterError,errorCode} from './errors';
-import {versions} from 'node:process';
 import {SessionCredentials} from './session-credentials';
-import {nasDefaults,validateNasSettings,serializeNasSettings,type NasSettings} from './nas-settings';
-import {NasSettingsTab,type ConnectionInfo} from './nas-settings-tab';
+import type {NasSettings} from './nas-settings';
+import type {ConnectionInfo} from './nas-settings-tab';
 import {ReadOnlyWebDav,discoverMapping,type DavEntry,type DiscoveryResult} from './webdav';
+import {UnifiedResources} from './unified-resources';
+const desktop = () => require('./desktop-https') as typeof import('./desktop-https');
+const legacySettings = () => require('./nas-settings') as typeof import('./nas-settings');
 export default class NasPocPlugin extends Plugin {
+  private unified?: UnifiedResources;
   private adapter?: DomAdapter;
   private pool?: ResourcePool;
   private viewRoots=new Set<Element>();
@@ -24,7 +27,7 @@ export default class NasPocPlugin extends Plugin {
   private probes=new Set<DesktopHttpsTransport>();
   private sessionCredentials=new SessionCredentials();
   private nasSession=new SessionCredentials();
-  private nasSettings=nasDefaults();
+  private nasSettings!: NasSettings;
   private nasMode=false;
   private verifiedNasEndpoint?:string;
   private nasFixtureCa?:string;
@@ -33,11 +36,15 @@ export default class NasPocPlugin extends Plugin {
   async onload(): Promise<void> {
     this.alive=true;
     this.register(()=>{this.alive=false;this.transition++;this.stop(true);});
-    try{const stored=await this.loadData();if(stored)this.nasSettings=validateNasSettings(stored);}
+    if (!Platform.isDesktopApp) { this.unified = new UnifiedResources(this); return; }
+    this.nasSettings = legacySettings().nasDefaults();
+    try{const stored=await this.loadData();if(stored)this.nasSettings=legacySettings().validateNasSettings(stored);}
     catch{new Notice('NAS 设置无效，已使用安全默认值；原配置未被自动覆盖。');}
     if(!this.alive)return;
     this.start();
-    this.addSettingTab(new NasSettingsTab(this.app,this));
+    const { NasSettingsTab } = require('./nas-settings-tab') as typeof import('./nas-settings-tab');
+    this.unified = new UnifiedResources(this, new NasSettingsTab(this.app,this), origin =>
+      this.nasSettings.endpoint === origin ? this.nasSettings.certificateTrust : undefined);
     this.registerMarkdownPostProcessor((element,context)=>{
       const child=new MarkdownRenderChild(element);context.addChild(child);
       child.register(()=>this.adapter?.sweep());
@@ -54,14 +61,14 @@ export default class NasPocPlugin extends Plugin {
     this.sessionCredentials.set({username:'poc-user',password:'poc-password'});
     this.desktopTransport=undefined;
     if(this.nasMode){
-      const settings=validateNasSettings(this.nasSettings,true);
+      const settings=legacySettings().validateNasSettings(this.nasSettings,true);
       this.desktopTransport=this.createNasTransport();
       this.pool=new ResourcePool(this.desktopTransport.load);
       this.adapter=new DomAdapter(document,this.pool,source=>resolveResource(source,settings.endpoint,settings.mappings,Platform.resourcePathPrefix));
       return;
     }
     const localHttp=createTestHttpLoader(requestUrl,'http://127.0.0.1:19223',()=>`Basic ${btoa('poc-user:poc-password')}`,1024*1024);
-    if(this.secureLoopbackCa)this.desktopTransport=createLoopbackHttpsTestTransport(this.secureLoopbackCa,{
+    if(this.secureLoopbackCa)this.desktopTransport=desktop().createLoopbackHttpsTestTransport(this.secureLoopbackCa,{
       getCredentials:()=>this.sessionCredentials.get(),maxBytes:1024*1024,timeoutMs:2000
     });
     const loader: Loader=this.secureLoopbackCa?async(url,context)=>{
@@ -100,20 +107,23 @@ export default class NasPocPlugin extends Plugin {
     return {mode:this.nasMode?'nas-read-only':this.secureLoopbackCa?'https-loopback-test-only':this.loopbackTest?'loopback-test-only':'synthetic-only',nasEnabled:this.nasMode&&this.enabled,apiVersion,resourcePrefix:Platform.resourcePathPrefix,
       nas:{endpoint:this.nasSettings.endpoint,tlsVerified:this.nasTlsVerified(),mappings:this.nasSettings.mappings.length,credentialSource:this.nasSettings.credentialSource,
         certificateTrust:this.nasSettings.certificateTrust?{serverName:this.nasSettings.certificateTrust.serverName,sha256:this.nasSettings.certificateTrust.sha256}:null},
-      runtime:{node:versions.node,electron:versions.electron},desktopTransport:this.desktopTransport?.stats(),
+      runtime:{node:typeof process==='undefined'?undefined:process.versions.node,electron:typeof process==='undefined'?undefined:process.versions.electron},desktopTransport:this.desktopTransport?.stats(),
       credentialApi:{storage:typeof this.app.secretStorage?.getSecret==='function',component:typeof SecretComponent==='function'},
-      enabled:this.enabled,dom:this.adapter?.stats(),resources:this.pool?.stats()};
+      enabled:this.enabled,dom:this.adapter?.stats(),resources:this.pool?.stats(),unifiedResources:this.unified?.stats()};
   }
-  getNasSettings():NasSettings{return serializeNasSettings(this.nasSettings);}
+  getNasSettings():NasSettings{return legacySettings().serializeNasSettings(this.nasSettings);}
   async updateNasSettings(value:NasSettings):Promise<void>{
     if(!this.alive)throw new AdapterError('UNLOADED');
-    const next=validateNasSettings(value);
+    const next=legacySettings().validateNasSettings(value);
     const credentialsChanged=next.endpoint!==this.nasSettings.endpoint||next.username!==this.nasSettings.username||next.credentialSource!==this.nasSettings.credentialSource||next.passwordSecretId!==this.nasSettings.passwordSecretId||JSON.stringify(next.certificateTrust)!==JSON.stringify(this.nasSettings.certificateTrust);
     if(this.nasMode)await this.replaceResources(false);
     if(!this.alive)throw new AdapterError('UNLOADED');
     if(credentialsChanged){this.nasSession.clear();this.verifiedNasEndpoint=undefined;}
     if(next.endpoint!==this.nasSettings.endpoint)this.nasFixtureCa=undefined;
-    this.nasSettings=next;await this.saveData(serializeNasSettings(next));
+    const trustChanged = next.endpoint !== this.nasSettings.endpoint ||
+      JSON.stringify(next.certificateTrust) !== JSON.stringify(this.nasSettings.certificateTrust);
+    this.nasSettings=next;await this.saveData(legacySettings().serializeNasSettings(next));
+    if (trustChanged && this.alive) this.unified?.reload();
   }
   private nasConnectionKey():string{return JSON.stringify({endpoint:this.nasSettings.endpoint,certificateTrust:this.nasSettings.certificateTrust});}
   nasTlsVerified():boolean{return this.verifiedNasEndpoint===this.nasConnectionKey();}
@@ -133,10 +143,10 @@ export default class NasPocPlugin extends Plugin {
   private createNasTransport(anonymous=false):DesktopHttpsTransport{
     const options={getCredentials:()=>anonymous?null:this.nasCredentials()};
     return this.nasFixtureCa&&this.nasSettings.endpoint==='https://127.0.0.1:19225'
-      ?createLoopbackHttpsTestTransport(this.nasFixtureCa,options)
+      ?desktop().createLoopbackHttpsTestTransport(this.nasFixtureCa,options)
       :this.nasSettings.certificateTrust
-        ?createCertificateHttpsTransport({...options,origin:this.nasSettings.endpoint},this.nasSettings.certificateTrust)
-        :createDesktopHttpsTransport({...options,origin:this.nasSettings.endpoint});
+        ?desktop().createCertificateHttpsTransport({...options,origin:this.nasSettings.endpoint},this.nasSettings.certificateTrust)
+        :desktop().createDesktopHttpsTransport({...options,origin:this.nasSettings.endpoint});
   }
   async probeNas():Promise<ConnectionInfo>{
     if(!this.alive)return {tlsVerified:false,code:'UNLOADED',message:'插件已停用'};
@@ -170,7 +180,7 @@ export default class NasPocPlugin extends Plugin {
     try{return await discoverMapping(new ReadOnlyWebDav(transport,this.nasSettings.endpoint),mapping.windowsRoot,samples);}
     finally{transport.dispose();this.probes.delete(transport);}
   }
-  async enableNasImages():Promise<void>{this.requireNasReady();validateNasSettings(this.nasSettings,true);await this.replaceResources(true);}
+  async enableNasImages():Promise<void>{this.requireNasReady();legacySettings().validateNasSettings(this.nasSettings,true);await this.replaceResources(true);}
   async disableNasImages(clearCredentials=false):Promise<void>{if(clearCredentials)this.nasSession.clear();if(!this.alive)return;await this.replaceResources(false);}
   private async replaceResources(nas:boolean):Promise<void>{
     const generation=++this.transition,old=this.pool;this.stop();
@@ -183,7 +193,7 @@ export default class NasPocPlugin extends Plugin {
   /** Lab only: the transport itself refuses a test CA outside the fixed loopback origin. */
   setNasFixtureCa(ca:string|null):void{
     if(this.nasSettings.endpoint!=='https://127.0.0.1:19225')throw new AdapterError('HOST');
-    if(ca!==null){const test=createLoopbackHttpsTestTransport(ca,{getCredentials:()=>null});test.dispose();}
+    if(ca!==null){const test=desktop().createLoopbackHttpsTestTransport(ca,{getCredentials:()=>null});test.dispose();}
     this.nasFixtureCa=ca ?? undefined;this.verifiedNasEndpoint=undefined;
   }
   /** Test-runner only: fixed loopback fixture service, never a configurable NAS endpoint. */
@@ -201,7 +211,7 @@ export default class NasPocPlugin extends Plugin {
       'declared-large','stream-large','slow','truncated','html','encoded','disconnect']);
     if(routes.length>20||routes.some(route=>!allowed.has(route)))throw new Error('Invalid local test route');
     const config={getCredentials:()=>this.sessionCredentials.get(),timeoutMs:options.timeoutMs ?? 1000,maxBytes:options.maxBytes ?? 1024*1024};
-    const transport=ca===null?createDesktopHttpsTransport({...config,origin:'https://127.0.0.1:19225'}):createLoopbackHttpsTestTransport(ca,config);
+    const transport=ca===null?desktop().createDesktopHttpsTransport({...config,origin:'https://127.0.0.1:19225'}):desktop().createLoopbackHttpsTestTransport(ca,config);
     this.probes.add(transport);
     const result:Record<string,object>={};
     try{
