@@ -1,5 +1,7 @@
 # nas address translator — Windows preview
 
+Source code is available under the [MIT License](LICENSE).
+
 Bring remote images into your notes.
 
 Formerly Remote NAS Resource Adapter. Only the display name has changed; the plugin ID and installation directory remain remote-nas-resource-adapter so existing settings are retained. The repository URL is unchanged.

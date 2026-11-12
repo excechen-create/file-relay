@@ -4,6 +4,7 @@
   "version": "0.4.1",
   "minAppVersion": "1.11.4",
   "description": "Windows read-only WebDAV image adapter with strict HTTPS and bounded resources",
-  "author": "Local development",
-  "isDesktopOnly": true
+  "author": "excechen-create",
+  "isDesktopOnly": true,
+  "authorUrl": "https://github.com/excechen-create"
 }
