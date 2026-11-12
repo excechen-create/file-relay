@@ -1,10 +1,10 @@
 {
   "id": "remote-nas-resource-adapter",
   "name": "nas address translator",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "minAppVersion": "1.11.4",
   "description": "Windows read-only WebDAV image adapter with strict HTTPS and bounded resources",
   "author": "excechen-create",
-  "isDesktopOnly": true,
-  "authorUrl": "https://github.com/excechen-create"
+  "authorUrl": "https://github.com/excechen-create",
+  "isDesktopOnly": true
 }
