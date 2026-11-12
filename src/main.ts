@@ -15,7 +15,7 @@ import {UnifiedResources} from './unified-resources';
 declare const __NAS_LAB__: boolean;
 const desktop = () => require('./desktop-https') as typeof import('./desktop-https');
 const legacySettings = () => require('./nas-settings') as typeof import('./nas-settings');
-export default class NasPocPlugin extends Plugin {
+export default class FileRelayPlugin extends Plugin {
   private unified?: UnifiedResources;
   private adapter?: DomAdapter;
   private pool?: ResourcePool;

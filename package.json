@@ -1,6 +1,6 @@
 {
-  "name": "obsidian-remote-nas-resource-adapter",
-  "version": "0.4.6",
+  "name": "file-relay",
+  "version": "0.4.7",
   "private": true,
   "description": "Windows read-only WebDAV image adapter with strict HTTPS and bounded resources",
   "type": "module",
