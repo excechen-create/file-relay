@@ -13,7 +13,7 @@ import type { DesktopHttpsTransport } from './desktop-https';
 import type { CertificateTrust } from './certificate-trust';
 import type { Loader } from './transport';
 
-const storageKey = 'remote-nas-resource-adapter:device-resource-groups:v1';
+const storageKey = 'file-relay:device-resource-groups:v1';
 const local = () => require('./local-resources') as typeof import('./local-resources');
 interface ImageInput { source: string; selection?: boolean; notePath?: string }
 

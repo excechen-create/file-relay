@@ -16,7 +16,7 @@ The default strategy checks the actual local file first and uses WebDAV when it 
 
 ## Install or update
 
-In BRAT, add `excechen-create/obsidian-remote-nas-resource-adapter` and track **Latest** to receive preview releases. Version 0.4.3 is the first preview with unified `nas://` resource groups.
+In BRAT, add `excechen-create/file-relay` and track **Latest** to receive preview releases. Version 0.4.3 is the first preview with unified `nas://` resource groups.
 
 Use official Adjustable Media 0.9.2 if you want its matrix and viewer. Its unmodified release passed the Windows compatibility tests, so AM can stay on its own official update channel. The compatibility build script is for the audited older AM 0.8.2 and 0.9.0 builds.
 
@@ -27,7 +27,7 @@ npm ci
 npm run verify
 ~~~
 
-For manual installation, copy main.js, manifest.json and styles.css from the release or the dist directory into your vault's .obsidian/plugins/remote-nas-resource-adapter directory.
+For manual installation, copy main.js, manifest.json and styles.css from the release or the dist directory into your vault's .obsidian/plugins/file-relay directory.
 
 ## HTTPS and platform scope
 

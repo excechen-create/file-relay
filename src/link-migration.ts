@@ -2,7 +2,7 @@ import { Modal, Notice, Setting, type App } from 'obsidian';
 import { isResourceUri, parseInlineLink } from './resource-uri';
 
 interface Change { path: string; before: string; after: string }
-const backupKey = 'remote-nas-resource-adapter:last-link-migration:v1';
+const backupKey = 'file-relay:last-link-migration:v1';
 
 export class LinkMigration {
   private busy = false;
