@@ -3,6 +3,7 @@ import { EditorView } from '@codemirror/view';
 import { DomAdapter } from './dom-adapter';
 import { AdapterError } from './errors';
 import { mobileWebDav } from './mobile-webdav';
+import { LinkMigration } from './link-migration';
 import { ResourceRegistry, type ResourceGroup } from './resource-registry';
 import { ResourceRendering } from './resource-rendering';
 import { ResourceResolver, type ImageLease } from './resource-resolver';
@@ -40,10 +41,12 @@ export class UnifiedResources {
       this.transports.clear();
       this.sessions.clear();
     });
+    const migration = new LinkMigration(plugin.app, (source, notePath) => this.convert({ source, selection: true, notePath }));
     plugin.addSettingTab(new ResourceSettingsTab(plugin, {
       groups: () => this.registry.list(),
       save: (groups, session) => this.save(groups, session),
       test: (uri, webdav) => webdav ? this.resolver.probeWebdav(uri) : this.acquire(uri),
+      migrate: restore => void migration.start(restore),
     }, legacy));
     plugin.registerMarkdownPostProcessor((root, context) => this.rendering.reading(root, context), 100);
     plugin.registerEditorExtension(this.rendering.editorExtension());

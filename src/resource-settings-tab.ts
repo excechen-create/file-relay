@@ -33,6 +33,7 @@ interface SettingsApi {
   groups(): ResourceGroup[];
   save(groups: ResourceGroup[], session?: { namespace: string; password: string }): void;
   test(uri: string, webdav: boolean): ImageLease;
+  migrate(restore: boolean): void;
 }
 
 export class ResourceSettingsTab extends PluginSettingTab {
@@ -112,6 +113,13 @@ export class ResourceSettingsTab extends PluginSettingTab {
         this.render();
       }))
       .addButton(button => button.setButtonText('保存映射').setCta().onClick(() => this.save()));
+    if (Platform.isDesktopApp) {
+      const migration = el.createEl('details', { cls: 'nas-resource-settings-details' });
+      migration.createEl('summary', { text: '笔记链接转换' });
+      new Setting(migration).setName('本 Vault 的图片链接').setDesc('只转换匹配已启用资源组的本地图片链接。')
+        .addButton(button => button.setButtonText('转换本地图片链接').onClick(() => this.api.migrate(false)))
+        .addButton(button => button.setButtonText('恢复上次转换').onClick(() => this.api.migrate(true)));
+    }
     const diagnostics = el.createEl('details', { cls: 'nas-resource-settings-details' });
     diagnostics.createEl('summary', { text: '连接测试' });
     new Setting(diagnostics).setName('图片链接').setDesc('粘贴已保存资源组里的 nas:// 图片链接。')
