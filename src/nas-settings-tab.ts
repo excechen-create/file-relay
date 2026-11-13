@@ -106,7 +106,7 @@ export class NasSettingsTab extends PluginSettingTab {
   }
   display():void {
     this.containerEl.empty();
-    this.containerEl.createEl('h2',{text:'File Relay'});
+    new Setting(this.containerEl).setName('File Relay').setHeading();
     this.containerEl.createEl('p',{text:'在这里核对 HTTPS 证书，或为旧文件链接配置只读 WebDAV 映射。'});
     new Setting(this.containerEl).setName('WebDAV HTTPS 地址').setDesc('仅填写服务器及端口，目录在映射中单独填写。').addText(text=>text.setValue(this.draft.endpoint).setPlaceholder('https://服务器:5006').onChange(value=>{
       if(this.draft.endpoint===value.trim())return;
@@ -132,7 +132,7 @@ export class NasSettingsTab extends PluginSettingTab {
     if(this.draft.credentialSource==='secret'){
       new Setting(this.containerEl).setName('秘密引用').setDesc('插件只保存秘密名称，不保存密码。确认该设备的官方存储安全边界后使用。').addComponent(element=>new SecretComponent(this.app,element).setValue(this.draft.passwordSecretId).onChange(value=>{this.draft.passwordSecretId=value ?? '';}));
     }
-    this.containerEl.createEl('h3',{text:'路径映射'});
+    new Setting(this.containerEl).setName('路径映射').setHeading();
     this.draft.mappings.forEach((mapping,index)=>{
       new Setting(this.containerEl).setName(`Windows 根目录 ${index+1}`).addText(text=>text.setValue(mapping.windowsRoot).onChange(value=>{mapping.windowsRoot=value;}));
       new Setting(this.containerEl).setName('对应 WebDAV 目录').setDesc('必须是已核对的服务器目录，不根据本地文件夹名猜测。').addText(text=>text.setValue(mapping.webdavRoot).setPlaceholder('尚待核对').onChange(value=>{mapping.webdavRoot=value;}))

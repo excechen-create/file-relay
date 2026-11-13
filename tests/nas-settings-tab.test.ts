@@ -43,6 +43,10 @@ vi.mock('obsidian', () => {
       this.settingEl.append(label);
       return this;
     }
+    setHeading(): this {
+      this.settingEl.classList.add('setting-item-heading');
+      return this;
+    }
     setDesc(description: string): this {
       const desc = document.createElement('span');
       desc.textContent = description;
