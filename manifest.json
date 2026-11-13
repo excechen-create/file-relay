@@ -1,7 +1,7 @@
 {
   "id": "file-relay",
   "name": "File Relay",
-  "version": "0.4.9",
+  "version": "0.4.10",
   "minAppVersion": "1.14.5",
   "description": "Resolve logical image links through device-local folders and read-only HTTPS WebDAV.",
   "author": "excechen-create",
